@@ -82,6 +82,28 @@ async def main():
             "Group books by genre")
         print("=== AGGREGATE BY GENRE ===")
         print(result.final_output)
+        print()
+
+        # Test CRUD operations
+        result = await Runner.run(
+            agent,
+            "Add a new book: title: Python Programming, author: John Smith, genre: Programming, year: 2023, pages: 450")
+        print("=== ADD BOOK ===")
+        print(result.final_output)
+        print()
+
+        result = await Runner.run(
+            agent,
+            "Add a new member: name: Jane Doe, email: jane.doe@example.com, phone: 555-9876")
+        print("=== ADD MEMBER ===")
+        print(result.final_output)
+        print()
+
+        result = await Runner.run(
+            agent,
+            "Get database statistics")
+        print("=== DATABASE STATS ===")
+        print(result.final_output)
 
 if __name__ == "__main__":
     asyncio.run(main())

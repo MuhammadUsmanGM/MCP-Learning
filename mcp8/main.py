@@ -113,6 +113,98 @@ def extract_search_terms(query: str) -> str:
     return ' '.join(filtered_words) if filtered_words else query
 
 
+def parse_book_input(text: str) -> Dict:
+    """
+    Parse natural language book input and convert to document format.
+    """
+    book_doc = {}
+    text_lower = text.lower()
+    
+    # Extract title
+    title_patterns = [r'title[:\s]+([^,]+)', r'book[:\s]+([^,]+)', r'"([^"]+)"', r"'([^']+)'"]
+    for pattern in title_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            book_doc['title'] = match.group(1).strip()
+            break
+    
+    # Extract author
+    author_patterns = [r'author[:\s]+([^,]+)', r'by[:\s]+([^,]+)', r'written by[:\s]+([^,]+)']
+    for pattern in author_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            book_doc['author'] = match.group(1).strip()
+            break
+    
+    # Extract genre
+    genre_match = re.search(r'genre[:\s]+([^,]+)', text, re.IGNORECASE)
+    if genre_match:
+        book_doc['genre'] = genre_match.group(1).strip()
+    
+    # Extract ISBN
+    isbn_match = re.search(r'isbn[:\s]+([0-9\-]+)', text, re.IGNORECASE)
+    if isbn_match:
+        book_doc['isbn'] = isbn_match.group(1).strip()
+    
+    # Extract published year
+    year_match = re.search(r'(?:published|year)[:\s]+(\d{4})', text, re.IGNORECASE)
+    if year_match:
+        book_doc['published_year'] = int(year_match.group(1))
+    
+    # Extract pages
+    pages_match = re.search(r'pages[:\s]+(\d+)', text, re.IGNORECASE)
+    if pages_match:
+        book_doc['pages'] = int(pages_match.group(1))
+    
+    return book_doc if book_doc else None
+
+
+def parse_book_update(text: str) -> Dict:
+    """
+    Parse natural language book update input.
+    """
+    return parse_book_input(text)  # Same parsing logic for updates
+
+
+def parse_member_input(text: str) -> Dict:
+    """
+    Parse natural language member input and convert to document format.
+    """
+    member_doc = {}
+    
+    # Extract name
+    name_patterns = [r'name[:\s]+([^,]+)', r'member[:\s]+([^,]+)', r'"([^"]+)"', r"'([^']+)'"]
+    for pattern in name_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            member_doc['name'] = match.group(1).strip()
+            break
+    
+    # Extract email
+    email_match = re.search(r'email[:\s]+([^\s,]+@[^\s,]+)', text, re.IGNORECASE)
+    if email_match:
+        member_doc['email'] = email_match.group(1).strip()
+    
+    # Extract phone
+    phone_match = re.search(r'phone[:\s]+([+\d\s\-\(\)]+)', text, re.IGNORECASE)
+    if phone_match:
+        member_doc['phone'] = phone_match.group(1).strip()
+    
+    # Extract member_id
+    member_id_match = re.search(r'member_id[:\s]+([^\s,]+)', text, re.IGNORECASE)
+    if member_id_match:
+        member_doc['member_id'] = member_id_match.group(1).strip()
+    
+    return member_doc if member_doc else None
+
+
+def parse_member_update(text: str) -> Dict:
+    """
+    Parse natural language member update input.
+    """
+    return parse_member_input(text)  # Same parsing logic for updates
+
+
 secrets = Secrets()
 
 mongo_client = MongoClient(secrets.mongo_uri)
@@ -397,6 +489,168 @@ def get_database_stats() -> str:
         return f"❌ Error getting database stats: {str(e)}"
 
 
+# --- CRUD Operations for Books ---
+@mcp.tool(name="add_book",
+          description="Add a new book to the collection. Provide book details as JSON or natural language.")
+def add_book(book_data: str) -> str:
+    try:
+        # Try to parse as JSON first
+        try:
+            book_doc = json.loads(book_data)
+        except json.JSONDecodeError:
+            # Parse natural language input
+            book_doc = parse_book_input(book_data)
+        
+        if not book_doc:
+            return "❌ Could not parse book data. Please provide JSON or natural language format."
+        
+        # Insert the book
+        result = books_col.insert_one(book_doc)
+        return f"✅ Book added successfully with ID: {result.inserted_id}"
+        
+    except Exception as e:
+        return f"❌ Error adding book: {str(e)}"
+
+
+@mcp.tool(name="update_book",
+          description="Update an existing book. Provide book ID and update data as JSON or natural language.")
+def update_book(book_id: str, update_data: str) -> str:
+    try:
+        # Convert to ObjectId
+        obj_id = ObjectId(book_id)
+        
+        # Try to parse update data as JSON first
+        try:
+            update_doc = json.loads(update_data)
+        except json.JSONDecodeError:
+            # Parse natural language update
+            update_doc = parse_book_update(update_data)
+        
+        if not update_doc:
+            return "❌ Could not parse update data. Please provide JSON or natural language format."
+        
+        # Update the book
+        result = books_col.update_one({"_id": obj_id}, {"$set": update_doc})
+        
+        if result.matched_count == 0:
+            return f"❌ No book found with ID: {book_id}"
+        elif result.modified_count > 0:
+            return f"✅ Book updated successfully. Modified {result.modified_count} field(s)."
+        else:
+            return "ℹ️ Book found but no changes were made (data was already current)."
+            
+    except Exception as e:
+        return f"❌ Error updating book: {str(e)}"
+
+
+@mcp.tool(name="delete_book",
+          description="Delete a book by ID. Use with caution as this operation cannot be undone.")
+def delete_book(book_id: str) -> str:
+    try:
+        # Convert to ObjectId
+        obj_id = ObjectId(book_id)
+        
+        # First check if book exists
+        book = books_col.find_one({"_id": obj_id})
+        if not book:
+            return f"❌ No book found with ID: {book_id}"
+        
+        # Delete the book
+        result = books_col.delete_one({"_id": obj_id})
+        
+        if result.deleted_count > 0:
+            book_title = book.get('title', 'Unknown')
+            return f"✅ Book '{book_title}' (ID: {book_id}) deleted successfully."
+        else:
+            return f"❌ Failed to delete book with ID: {book_id}"
+            
+    except Exception as e:
+        return f"❌ Error deleting book: {str(e)}"
+
+
+# --- CRUD Operations for Members ---
+@mcp.tool(name="add_member",
+          description="Add a new member to the collection. Provide member details as JSON or natural language.")
+def add_member(member_data: str) -> str:
+    try:
+        # Try to parse as JSON first
+        try:
+            member_doc = json.loads(member_data)
+        except json.JSONDecodeError:
+            # Parse natural language input
+            member_doc = parse_member_input(member_data)
+        
+        if not member_doc:
+            return "❌ Could not parse member data. Please provide JSON or natural language format."
+        
+        # Add join_date if not provided
+        if 'join_date' not in member_doc:
+            member_doc['join_date'] = datetime.now()
+        
+        # Insert the member
+        result = members_col.insert_one(member_doc)
+        return f"✅ Member added successfully with ID: {result.inserted_id}"
+        
+    except Exception as e:
+        return f"❌ Error adding member: {str(e)}"
+
+
+@mcp.tool(name="update_member",
+          description="Update an existing member. Provide member ID and update data as JSON or natural language.")
+def update_member(member_id: str, update_data: str) -> str:
+    try:
+        # Convert to ObjectId
+        obj_id = ObjectId(member_id)
+        
+        # Try to parse update data as JSON first
+        try:
+            update_doc = json.loads(update_data)
+        except json.JSONDecodeError:
+            # Parse natural language update
+            update_doc = parse_member_update(update_data)
+        
+        if not update_doc:
+            return "❌ Could not parse update data. Please provide JSON or natural language format."
+        
+        # Update the member
+        result = members_col.update_one({"_id": obj_id}, {"$set": update_doc})
+        
+        if result.matched_count == 0:
+            return f"❌ No member found with ID: {member_id}"
+        elif result.modified_count > 0:
+            return f"✅ Member updated successfully. Modified {result.modified_count} field(s)."
+        else:
+            return "ℹ️ Member found but no changes were made (data was already current)."
+            
+    except Exception as e:
+        return f"❌ Error updating member: {str(e)}"
+
+
+@mcp.tool(name="delete_member",
+          description="Delete a member by ID. Use with caution as this operation cannot be undone.")
+def delete_member(member_id: str) -> str:
+    try:
+        # Convert to ObjectId
+        obj_id = ObjectId(member_id)
+        
+        # First check if member exists
+        member = members_col.find_one({"_id": obj_id})
+        if not member:
+            return f"❌ No member found with ID: {member_id}"
+        
+        # Delete the member
+        result = members_col.delete_one({"_id": obj_id})
+        
+        if result.deleted_count > 0:
+            member_name = member.get('name', 'Unknown')
+            return f"✅ Member '{member_name}' (ID: {member_id}) deleted successfully."
+        else:
+            return f"❌ Failed to delete member with ID: {member_id}"
+            
+    except Exception as e:
+        return f"❌ Error deleting member: {str(e)}"
+
+
 @mcp.prompt(name="instructions")
 def instructions():
     """
@@ -405,21 +659,34 @@ def instructions():
     Available Tools:
     
     BOOKS COLLECTION:
+    READ Operations:
     - query_books: Search books using natural language ("books by Stephen King", "fantasy books", "book titled Clean Code", "count sci-fi books")
     - get_book_by_id: Find a specific book by MongoDB ObjectId
     - count_books: Count books with optional filters
     - aggregate_books: Perform aggregations ("group by author", "count by genre", "average pages")
     
+    WRITE Operations:
+    - add_book: Add new books with JSON or natural language ("title: Clean Code, author: Robert Martin, genre: Programming, year: 2008")
+    - update_book: Update existing books by ID ("update title to Clean Architecture")
+    - delete_book: Delete books by ID (use with caution - permanent operation)
+    
     MEMBERS COLLECTION:
+    READ Operations:
     - query_members: Search members using natural language ("member named Alice", "members with gmail email")
     - get_member_by_id: Find a specific member by MongoDB ObjectId  
     - count_members: Count members with optional filters
+    
+    WRITE Operations:
+    - add_member: Add new members ("name: John Doe, email: john@example.com, phone: 555-1234")
+    - update_member: Update existing members by ID ("update email to newemail@example.com")
+    - delete_member: Delete members by ID (use with caution - permanent operation)
     
     UNIVERSAL TOOLS:
     - smart_search: Intelligently searches across both collections based on query context
     - get_database_stats: Get collection statistics and field information
     
     SUPPORTED QUERY TYPES:
+    READ Operations:
     - Simple searches: "Clean Code", "Alice", "Stephen King"
     - Field-specific: "author: Martin", "genre: fantasy", "email: gmail"
     - Counting: "count books by Stephen King", "how many fantasy books"
@@ -427,6 +694,12 @@ def instructions():
     - Complex filters: "books published in 2020", "members with gmail addresses"
     - Aggregations: "group books by author", "count books per genre"
     - JSON queries: {"author": "Stephen King", "genre": "Horror"}
+    
+    WRITE Operations:
+    - Add records: "title: The Hobbit, author: J.R.R. Tolkien, genre: Fantasy, year: 1937"
+    - Update records: "update author to J.R.R Tolkien" (requires record ID)
+    - Delete records: delete_book("507f1f77bcf86cd799439011") (requires record ID)
+    - JSON format: {"title": "New Book", "author": "New Author"}
     
     The system intelligently parses natural language and converts it to appropriate MongoDB queries.
     For ambiguous queries, it may search both collections to provide comprehensive results.
