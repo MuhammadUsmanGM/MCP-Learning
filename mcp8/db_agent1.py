@@ -21,76 +21,75 @@ model = OpenAIChatCompletionsModel(
     model=secrets.gemini_api_model,
     openai_client=external_client
 )
+
 async def main():
     params_config = MCPServerStreamableHttpParams(url="http://127.0.0.1:8000/mcp")
-    async with MCPServerStreamableHttp(params=params_config, name="Assistant_Server", cache_tools_list = True) as mcp_server:
+    async with MCPServerStreamableHttp(params=params_config, name="Universal_MongoDB_Server", cache_tools_list = True) as mcp_server:
         mcp_server.invalidate_tools_cache()
         await mcp_server.connect()
 
         greet = await mcp_server.get_prompt("instructions")
 
         agent = Agent(
-            name="Assistant",
+            name="Universal_MongoDB_Assistant",
             instructions=greet.messages[0].content.text,
             model=model,
             mcp_servers=[mcp_server]
         )
-
-        # Test enhanced natural language queries
         result = await Runner.run(
             agent,
-            "What's the id of the member named Alice?")
-        print("=== MEMBER ID LOOKUP ===")
+            "Show me all available databases")
+        print("=== ALL DATABASES ===")
         print(result.final_output)
         print()
 
         result = await Runner.run(
             agent,
-            "What's the details for the member Bob?")
-        print("=== MEMBER DETAILS ===")
+            "List all collections in the Library database")
+        print("=== COLLECTIONS ===")
         print(result.final_output)
         print()
 
         result = await Runner.run(
             agent,
-            "Who is the author of book Clean Code?")
-        print("=== BOOK AUTHOR LOOKUP ===")
+            "Get information about the books collection if it exists")
+        print("=== COLLECTION INFO ===")
         print(result.final_output)
         print()
 
         result = await Runner.run(
             agent,
-            "Count all books in the collection")
+            "Count all documents in the books collection located in the Library database?")
         print("=== COUNT BOOKS ===")
         print(result.final_output)
         print()
 
         result = await Runner.run(
             agent,
-            "How many members do we have?")
-        print("=== COUNT MEMBERS ===")
-        print(result.final_output)
-
-        result = await Runner.run(
-            agent,
-            "Show me books by Stephen King")
-        print("=== BOOKS BY AUTHOR ===")
-        print(result.final_output)
-
-        result = await Runner.run(
-            agent,
-            "Group books by genre")
-        print("=== AGGREGATE BY GENRE ===")
+            "Query books collection for documents where genre: programming")
+        print("=== QUERY FANTASY BOOKS ===")
         print(result.final_output)
         print()
 
-        # Test CRUD operations
         result = await Runner.run(
             agent,
-            "Add a new book: title: Python Programming, author: John Smith, genre: Programming, year: 2023, pages: 450")
-        print("=== ADD BOOK ===")
+            "Add a new document to book collection of the Library database: title: the Ultimate Hacking, author : George Orwell, year : 2005, genre : programming, available : true")
+        print("=== ADD PRODUCT ===")
         print(result.final_output)
         print()
+
+        result = await Runner.run(
+            agent,
+            "Query products collection for all documents")
+        print("=== ALL PRODUCTS ===")
+        print(result.final_output)
+        print()
+
+        result = await Runner.run(
+            agent,
+            "Group products by category")
+        print("=== GROUP PRODUCTS BY CATEGORY ===")
+        print(result.final_output)
 
 if __name__ == "__main__":
     asyncio.run(main())
